@@ -109,16 +109,19 @@
         async function register() {
             const username = document.getElementById('username').value;
             const options = await fetchOptions(username);
+            console.log("options:", options);
 
             if (options.allowCredentials) {
                 alert('该用户已注册');
                 return;
             }
 
+
             options.challenge = Uint8Array.from(atob(options.challenge), c => c.charCodeAt(0));
             options.user.id = Uint8Array.from(atob(options.user.id), c => c.charCodeAt(0));
 
             const credential = await navigator.credentials.create({ publicKey: options });
+            console.log("credential:", credential);
 
             const attestationResponse = {
                 id: credential.id,

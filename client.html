@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+    <title>Passkey Login</title>
+    <style>
+        body {
+            flex-direction: column;
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            height: 100vh;
+        }
+        .wrap{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 30vh;
+        }
+
+        .container {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 400px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333333;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555555;
+            margin-right: 20px;
+            font-weight: 700;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #dddddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: #ffffff;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <h1>Passkey Login</h1>
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username">
+        </div>
+        <button id="register">Register</button>
+        <button id="login">Login</button>
+    </div>
+
+    <script>
+        // 将 ArrayBuffer 转换为 Base64
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return window.btoa(binary);
+        }
+
+        async function fetchOptions(username) {
+            const response = await fetch(`/cgi/getOptions?username=${username}`);
+            return await response.json();
+        }
+
+        async function register() {
+            const username = document.getElementById('username').value;
+            const options = await fetchOptions(username);
+
+            if (options.allowCredentials) {
+                alert('该用户已注册');
+                return;
+            }
+
+            options.challenge = Uint8Array.from(atob(options.challenge), c => c.charCodeAt(0));
+            options.user.id = Uint8Array.from(atob(options.user.id), c => c.charCodeAt(0));
+
+            const credential = await navigator.credentials.create({ publicKey: options });
+
+            const attestationResponse = {
+                id: credential.id,
+                rawId: arrayBufferToBase64(credential.rawId),
+                authenticatorAttachment: credential.authenticatorAttachment,
+                type: credential.type,
+                response: {
+                    clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON),
+                    attestationObject: arrayBufferToBase64(credential.response.attestationObject),
+                    transports: credential.response.getTransports ? credential.response.getTransports() : []
+                }
+            };
+
+            console.log("attestationResponse:", attestationResponse);
+            const response = await fetch('/cgi/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, attestationResponse }),
+            });
+
+            const result = await response.json();
+            alert(result.status);
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const options = await fetchOptions(username);
+
+            if (!options.allowCredentials) {
+                alert('该用户没有注册');
+                return;
+            }
+
+            options.challenge = Uint8Array.from(atob(options.challenge), c => c.charCodeAt(0));
+            options.allowCredentials = options.allowCredentials.map(cred => ({
+                ...cred,
+                id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0)),
+            }));
+
+            const credential = await navigator.credentials.get({ publicKey: options });
+
+            const assertionResponse = {
+                id: credential.id,
+                rawId: arrayBufferToBase64(credential.rawId),
+                authenticatorAttachment: credential.authenticatorAttachment,
+                type: credential.type,
+                response: {
+                    authenticatorData: arrayBufferToBase64(credential.response.authenticatorData),
+                    clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON),
+                    signature: arrayBufferToBase64(credential.response.signature),
+                    userHandle: arrayBufferToBase64(credential.response.userHandle)
+                }
+            };
+
+            const response = await fetch('/cgi/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, assertionResponse }),
+            });
+
+            const result = await response.json();
+            alert(result.status);
+        }
+
+        document.getElementById('register').addEventListener('click', register);
+        document.getElementById('login').addEventListener('click', login);
+    </script>
+</body>
+
+</html>
